@@ -1,0 +1,1 @@
+{"version":3,"sources":["../src/connection.js"],"names":["Connection","offline"],"mappings":";;;;;;;;;;;;;IAAaA,U,WAAAA,U,GAEZ,sBAAc;AAAA;AAAA,MADdC,OACc,GADJ,KACI;AAEb,C","file":"connection.js","sourcesContent":["export class Connection {\n\toffline = false;\n\tconstructor() {\n\n\t}\n}\n"]}
