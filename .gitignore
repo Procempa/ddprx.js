@@ -17,3 +17,5 @@ jspm_packages
 .node_repl_history
 *.tgz
 .yarn-integrity
+.vscode/
+.DS_Store
