@@ -48,5 +48,16 @@
     "sinon": "^1.17.6",
     "sockjs-client": "^1.1.1",
     "validate.js": "^0.11.1"
+  },
+  "babel": {
+    "presets": [
+		"es2015",
+		"stage-1"
+	  ],
+	  "plugins": [
+      "transform-decorators-legacy",
+      "transform-class-properties",
+      "transform-runtime"
+    ]
   }
 }
