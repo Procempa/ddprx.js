@@ -94,32 +94,32 @@ export class Connection {
 		this.close();
 		this.stateSubject = new Rx.ReplaySubject(1);
 		this.Socket.prototype.dispatchEvent = (event) => {
-				// console.log(event);
-				switch (event.type) {
-					case 'close':
-						this.online = false;
-						if (event.code === 1002) {
-							this.stateSubject.onNext({
-								"type": "error",
-								"reason": event.reason
-							});
-						} else {
-							this.stateSubject.onNext({ "type": "closed" });
-							this.stateSubject.onCompleted();
-						}
-						break;
-					case 'open':
-						this.send({
-							msg: "connect",
-							version: DDP_VERSION,
-							support: [DDP_VERSION]
+			// console.log(event);
+			switch (event.type) {
+				case 'close':
+					this.online = false;
+					if (event.code === 1002) {
+						this.stateSubject.onNext({
+							"type": "error",
+							"reason": event.reason
 						});
-						break;
-					default:
-						this._processMessage(Connection._parseDDP(event.data));
-				}
+					} else {
+						this.stateSubject.onNext({ "type": "closed" });
+						this.stateSubject.onCompleted();
+					}
+					break;
+				case 'open':
+					this.send({
+						msg: "connect",
+						version: DDP_VERSION,
+						support: [DDP_VERSION]
+					});
+					break;
+				default:
+					this._processMessage(Connection._parseDDP(event.data));
 			}
-			// console.log(this.server_url);
+		}
+		// console.log(this.server_url);
 		this._socket = new this.Socket(this.server_url, undefined, {
 			transports: Connection.TRANSPORTS
 		});
@@ -157,7 +157,7 @@ export class Connection {
 		}
 	}
 
-	subscribe( /* arguments */ ) {
+	subscribe( /* arguments */) {
 		return this.stateSubject.subscribe(...arguments);
 	}
 
@@ -193,7 +193,7 @@ export class Connection {
 				delete copy.fields;
 		}
 		// adjust types to basic
-		_.each(['fields', 'params', 'result'], function(field) {
+		_.each(['fields', 'params', 'result'], function (field) {
 			if (_.has(copy, field))
 				copy[field] = EJSON._adjustTypesToJSONValue(copy[field]);
 		});
@@ -229,7 +229,7 @@ export class Connection {
 			delete msg.cleared;
 		}
 
-		_.forEach(['fields', 'params', 'result'], function(field) {
+		_.forEach(['fields', 'params', 'result'], function (field) {
 			if (_.has(msg, field))
 				msg[field] = EJSON._adjustTypesFromJSONValue(msg[field]);
 		});
