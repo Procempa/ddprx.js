@@ -99,15 +99,23 @@ export class Connection {
 			switch (event.type) {
 				case 'close':
 					this.connected = false;
-					if (event.code === 1002) {
-						this.stateSubject.onNext({
-							'type': 'error',
-							'reason': event.reason
-						});
+					if (this.autoReconect) {
+						this.stateSubject.onNext({ 'type': 'reconnecting' });
+						_.delay(() => this._socket = new this.Socket(this.server_url, undefined, {
+							transports: Connection.TRANSPORTS
+						}), this.reconnectInterval || 5000);
+
 					} else {
-						this.stateSubject.onNext({ 'type': 'closed' });
-						this.stateSubject.onCompleted();
-						this.schedulerDispose.dispose();
+						if (event.code === 1002) {
+							this.stateSubject.onNext({
+								'type': 'error',
+								'reason': event.reason
+							});
+						} else {
+							this.stateSubject.onNext({ 'type': 'closed' });
+							this.stateSubject.onCompleted();
+							this.schedulerDispose.dispose();
+						}
 					}
 					break;
 				case 'open':
@@ -170,9 +178,6 @@ export class Connection {
 					observer.dispose();
 				}
 				break;
-			case 'ready':
-				// { msg: 'ready', subs: [ 'xgsfuCAGB4eSpT39t' ] }
-				break;
 			case 'added':
 			case 'changed':
 			case 'removed':
@@ -198,7 +203,7 @@ export class Connection {
 			_.forEach(_.filter(this, (v, k) => _.startsWith(k, 'subscribe-')), (v) => {
 				this.unsubscribe(v.name);
 			});
-
+			this.autoReconect = false;
 			this._socket.close();
 			_.unset(this, 'socket');
 		}

@@ -134,10 +134,48 @@ test('Collection from a publish from server', (t) => {
 			} else if (event.type === 'closed') {
 				t.pass('Connection correct closed');
 			} else {
-				t.fail(`Unexpected state on connection ${event.state}`);
+				t.fail(`Unexpected state on connection ${event.type}`);
 			}
 
 		},
 		error => t.fail('Failed creating connection')
+	);
+});
+
+
+
+test('Create Connection and then connect, and reconnect', (t) => {
+	t.plan(4);
+
+	let options = {
+		autoConnect: true,
+		autoReconect: true,
+		reconnectInterval: 10
+	};
+	let connection = new Connection(SERVER_URL, options, FakeSockJS);
+	let connectTry = 0;
+	let retry = false;
+	connection.subscribe(
+		event => {
+			if (event.type === 'connected') {
+				t.pass(`Creating connection and connect ${++connectTry}`);
+				if (connectTry === 1) {
+					connection._socket.close();
+				} else {
+					connection.close();
+				}
+			} else if (event.type === 'reconnecting') {
+				if (!retry) {
+					retry = true;
+					t.pass('Trying to reconnect correct');
+				}
+			} else if (event.type === 'closed') {
+				t.pass('Connection correct closed');
+			} else {
+				t.fail(`Unexpected state on connection ${event.type}`);
+				connection.close();
+			}
+		},
+		() => t.fail('Failed creating connection')
 	);
 });
