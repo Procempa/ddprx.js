@@ -41,7 +41,16 @@ export class FakeSockJS {
 					bubbles: false,
 					cancelable: false,
 					timeStamp: 1481894227484,
-					data: `{"msg":"result","id":"${message.id}","result":[{"_id":"RPQuuo2YjAKtTEvfT","createdAt":1477579683545, "name": "Awesome data"}]}`
+					data: `{"msg":"result","id":"${message.id}", "result":[{"_id":"RPQuuo2YjAKtTEvfT","createdAt":1477579683545, "name": "Awesome data"}]}`
+				});
+				break;
+			case 'sub':
+				_.delay(this.dispatchEvent, 1, {
+					type: 'added',
+					bubbles: false,
+					cancelable: false,
+					timeStamp: 1481894227484,
+					data: '{"msg":"added", "collection": "collectionName", "id":"RPQuuo2YjAKtTEvfT","fields":{"createdAt":1477579683545, "name": "Awesome data"}}'
 				});
 				break;
 			default:

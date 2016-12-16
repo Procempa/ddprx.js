@@ -3,9 +3,7 @@ import Ajv from 'ajv';
 import Rx from 'rx';
 import validate from 'validate.js';
 import SockJS from 'sockjs-client';
-import EJSON from 'ejson';
 import { generateId, stringifyDDP, parseDDP } from './util';
-import { CollectionObserver } from './collection-observable';
 
 const DDP_VERSION = '1';
 const OPTIONS_STRUCTURE = {
@@ -47,7 +45,6 @@ export class Connection {
 
 	connected = false;
 
-
 	constructor(server_url, options, socket = SockJS) {
 		let ajv = new Ajv({ coerceTypes: true });
 		let validateOptions = ajv.compile(OPTIONS_STRUCTURE);
@@ -78,11 +75,12 @@ export class Connection {
 			_.set(this, 'server_url', server_url);
 		}
 		_.set(this, 'Socket', socket);
+
+		this.remoteCollection = [];
+
 		if (options.autoConnect) {
 			this.open();
 		}
-
-		this.remoteCollection = [];
 
 	}
 
@@ -148,6 +146,8 @@ export class Connection {
 	}
 
 	_processMessage(msg) {
+		// console.log(msg);
+		let observer;
 		switch (msg.msg) {
 			case 'connected':
 				this.connected = true;
@@ -158,14 +158,34 @@ export class Connection {
 				this.send({ msg: 'pong', id: msg.id });
 				break;
 			case 'result':
-				let observer = _.get(this, `pending-calls.${msg.id}`, observer);
+				observer = _.get(this, `pending-calls.${msg.id}`);
 				if (observer) {
 					_.unset(this, `pending-calls.${msg.id}`);
-					observer.onNext(msg.result);
+					if (msg.result) {
+						observer.onNext(msg.result);
+					} else {
+						observer.onError(msg.error);
+					}
+					observer.onCompleted();
+					observer.dispose();
+				}
+				break;
+			case 'ready':
+				// { msg: 'ready', subs: [ 'xgsfuCAGB4eSpT39t' ] }
+				break;
+			case 'added':
+			case 'changed':
+			case 'removed':
+				observer = _.get(this, `collection-${msg.collection}`);
+				if (observer) {
+					observer.onNext({
+						type: msg.msg,
+						data: _.assignIn({ _id: msg.id }, msg.fields)
+					});
 				}
 				break;
 			default:
-
+				console.log(msg);
 		}
 	}
 
@@ -175,6 +195,10 @@ export class Connection {
 
 	close() {
 		if (this._socket) {
+			_.forEach(_.filter(this, (v, k) => _.startsWith(k, 'subscribe-')), (v) => {
+				this.unsubscribe(v.name);
+			});
+
 			this._socket.close();
 			_.unset(this, 'socket');
 		}
@@ -184,7 +208,45 @@ export class Connection {
 		return this.stateSubject.subscribe(...arguments);
 	}
 
-	call(method, ...args) {
+	unsubscribe(publishName) {
+		let subscribe = _.get(this, `subscribe-${publishName}`);
+		if (subscribe) {
+			_.unset(this, `subscribe-${publishName}`);
+			this.send({
+				msg: 'unsub',
+				id: subscribe.id
+			});
+		}
+	}
+
+	collection(collectionName, publishName, ...params) {
+		let publishId = _.get(this, `subscribe-${publishName}`);
+		let collectionSubject = _.get(this, `collection-${collectionName}`);
+
+		if (_.isUndefined(collectionSubject)) {
+			collectionSubject = new Rx.ReplaySubject();
+			_.set(this, `collection-${collectionName}`, collectionSubject);
+		}
+
+		if (_.isUndefined(publishId)) {
+			let id = generateId();
+			_.set(this, `subscribe-${publishName}`, {
+				id: id,
+				name: publishName,
+				collectionName: collectionName
+			});
+			let message = {
+				msg: 'sub',
+				id: id,
+				name: publishName,
+				params: params
+			};
+			this.send(message);
+		}
+		return collectionSubject;
+	}
+
+	call(method, ...params) {
 		return Rx.Observable.create((observer) => {
 			let id = generateId();
 			_.set(this, `pending-calls.${id}`, observer);
@@ -192,7 +254,7 @@ export class Connection {
 				msg: 'method',
 				id: id,
 				method: method,
-				params: args
+				params: params
 			};
 			this.send(message);
 		});

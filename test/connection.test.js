@@ -85,10 +85,46 @@ test('Call method', (t) => {
 			if (event.type === 'connected') {
 				t.pass('Creating connection and connect');
 				connection
-					.call('getpessoas', { '_id': 'RPQuuo2YjAKtTEvfT' })
+					.call('methodName', { 'param': 'RPQuuo2YjAKtTEvfT' })
 					.subscribe(
 					result => {
 						t.pass('Method called with success');
+						connection.close();
+					},
+					error => {
+						t.fail('Error calling method');
+						connection.close();
+					});
+			} else if (event.type === 'closed') {
+				t.pass('Connection correct closed');
+			} else {
+				t.fail(`Unexpected state on connection ${event.state}`);
+			}
+
+		},
+		error => t.fail('Failed creating connection')
+	);
+});
+
+
+test('Collection from a publish from server', (t) => {
+	t.plan(3);
+
+	let options = {
+		autoConnect: true
+	};
+	let connection = new Connection(SERVER_URL, options, FakeSockJS);
+
+	connection.subscribe(
+		event => {
+			if (event.type === 'connected') {
+				t.pass('Creating connection and connect');
+				connection
+					.collection('collectionName', 'publishName', { '_id': 'RPQuuo2YjAKtTEvfT' })
+					.subscribe(
+					result => {
+						t.pass('Collection received with success');
+						connection.unsubscribe('publishName');
 						connection.close();
 					},
 					error => {
