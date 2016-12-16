@@ -4,29 +4,28 @@ import Rx from 'rx';
 import validate from 'validate.js';
 import SockJS from 'sockjs-client';
 import EJSON from 'ejson';
-import { generateId } from './util';
+import { generateId, stringifyDDP, parseDDP } from './util';
+import { CollectionObserver } from './collection-observable';
 
-const DDP_VERSION = "1";
+const DDP_VERSION = '1';
 const OPTIONS_STRUCTURE = {
-	"type": "object",
-	"properties": {
-		"autoConnect": { "type": "boolean", "default": false },
-		"autoReconect": { "type": "boolean", "default": false },
-		"reconnectInterval": { "type": "integer", "default": 10000 }
+	'type': 'object',
+	'properties': {
+		'autoConnect': { 'type': 'boolean', 'default': false },
+		'autoReconect': { 'type': 'boolean', 'default': false },
+		'reconnectInterval': { 'type': 'integer', 'default': 10000 }
 	},
-	"additionalProperties": false
+	'additionalProperties': false
 };
-
 const URL_VALIDATION = {
 	presence: true,
 	url: {
-		schemes: ["http", "https", "ws", "wss"],
+		schemes: ['http', 'https', 'ws', 'wss'],
 		allowLocal: true
 	}
 };
 
-const STATE_CLOSED = 0;
-const STATE_OPEN = 1;
+const DEFAULT_DELAY = 100;
 
 export class Connection {
 
@@ -42,8 +41,12 @@ export class Connection {
 		'jsonp-polling'
 	]
 
-	messageQueue = [];
-	online = false;
+	static STATE_CLOSED = 0;
+	static STATE_OPEN = 1;
+
+
+	connected = false;
+
 
 	constructor(server_url, options, socket = SockJS) {
 		let ajv = new Ajv({ coerceTypes: true });
@@ -78,8 +81,8 @@ export class Connection {
 		if (options.autoConnect) {
 			this.open();
 		}
-		this.remoteObserver = Rx.Observable.fromArray(this.messageQueue);
-		this.remoteObserver.subscribe(())
+
+		this.remoteCollection = [];
 
 	}
 
@@ -97,57 +100,77 @@ export class Connection {
 			// console.log(event);
 			switch (event.type) {
 				case 'close':
-					this.online = false;
+					this.connected = false;
 					if (event.code === 1002) {
 						this.stateSubject.onNext({
-							"type": "error",
-							"reason": event.reason
+							'type': 'error',
+							'reason': event.reason
 						});
 					} else {
-						this.stateSubject.onNext({ "type": "closed" });
+						this.stateSubject.onNext({ 'type': 'closed' });
 						this.stateSubject.onCompleted();
+						this.schedulerDispose.dispose();
 					}
 					break;
 				case 'open':
 					this.send({
-						msg: "connect",
+						msg: 'connect',
 						version: DDP_VERSION,
 						support: [DDP_VERSION]
 					});
 					break;
 				default:
-					this._processMessage(Connection._parseDDP(event.data));
+					this._processMessage(parseDDP(event.data));
 			}
-		}
-		// console.log(this.server_url);
+		};
 		this._socket = new this.Socket(this.server_url, undefined, {
 			transports: Connection.TRANSPORTS
 		});
+
+		this.schedulerDispose = Rx.Scheduler.default.scheduleRecursiveFuture(
+			undefined,
+			DEFAULT_DELAY,
+			(...args) => {
+				let recurse = args[1];
+				if (this._socket.readyState === Connection.STATE_OPEN) {
+					let message = this.remoteCollection.shift();
+					if (message) {
+						try {
+							this._socket.send(stringifyDDP(message));
+						} catch (error) {
+							console.error(error);
+							this.remoteCollection.unshift(message);
+						}
+					}
+				}
+				recurse();
+			});
 	}
 
 	_processMessage(msg) {
 		switch (msg.msg) {
 			case 'connected':
-				this.online = true;
+				this.connected = true;
 				this.session_id = msg.session;
-				this.stateSubject.onNext({ "type": "connected" });
+				this.stateSubject.onNext({ 'type': 'connected' });
 				break;
 			case 'ping':
-				this.send({ msg: "pong", id: msg.id });
+				this.send({ msg: 'pong', id: msg.id });
+				break;
+			case 'result':
+				let observer = _.get(this, `pending-calls.${msg.id}`, observer);
+				if (observer) {
+					_.unset(this, `pending-calls.${msg.id}`);
+					observer.onNext(msg.result);
+				}
 				break;
 			default:
 
 		}
 	}
 
-	_
-
 	send(message) {
-		if (this._socket.readyState === STATE_OPEN) {
-			this._socket.send(Connection._stringifyDDP(message));
-			messageQueue
-			// console.log(this._stringifyDDP(message));
-		}
+		this.remoteCollection.push(message);
 	}
 
 	close() {
@@ -165,75 +188,14 @@ export class Connection {
 		return Rx.Observable.create((observer) => {
 			let id = generateId();
 			_.set(this, `pending-calls.${id}`, observer);
-			this.messageQueue.push({
-				msg: "method",
+			let message = {
+				msg: 'method',
 				id: id,
 				method: method,
 				params: args
-			});
-			// observer.onNext({ result: "OK" });
+			};
+			this.send(message);
 		});
 	}
 
-	static _stringifyDDP(msg) {
-		let copy = EJSON.clone(msg);
-		// swizzle 'changed' messages from 'fields undefined' rep to 'fields
-		// and cleared' rep
-		if (_.has(msg, 'fields')) {
-			let cleared = [];
-			_.forEach(msg.fields, (value, key) => {
-				if (value === undefined) {
-					cleared.push(key);
-					delete copy.fields[key];
-				}
-			});
-			if (!_.isEmpty(cleared))
-				copy.cleared = cleared;
-			if (_.isEmpty(copy.fields))
-				delete copy.fields;
-		}
-		// adjust types to basic
-		_.each(['fields', 'params', 'result'], function (field) {
-			if (_.has(copy, field))
-				copy[field] = EJSON._adjustTypesToJSONValue(copy[field]);
-		});
-		if (msg.id && typeof msg.id !== 'string') {
-			throw new Error("Message id is not a string");
-		}
-		return JSON.stringify(copy);
-	}
-
-	static _parseDDP(stringMessage) {
-		let msg;
-		try {
-			msg = JSON.parse(stringMessage);
-		} catch (e) {
-			console.warn("Discarding message with invalid JSON", stringMessage);
-			return null;
-		}
-		// DDP messages must be objects.
-		if (msg === null || typeof msg !== 'object') {
-			console.warn("Discarding non-object DDP message", stringMessage);
-			return null;
-		}
-
-		// massage msg to get it into "abstract ddp" rather than "wire ddp" format.
-		// switch between "cleared" rep of unsetting fields and "undefined"
-		// rep of same
-		if (_.has(msg, 'cleared')) {
-			if (!_.has(msg, 'fields'))
-				msg.fields = {};
-			_.forEach(msg.cleared, (clearKey) => {
-				msg.fields[clearKey] = undefined;
-			});
-			delete msg.cleared;
-		}
-
-		_.forEach(['fields', 'params', 'result'], function (field) {
-			if (_.has(msg, field))
-				msg[field] = EJSON._adjustTypesFromJSONValue(msg[field]);
-		});
-
-		return msg;
-	}
 }

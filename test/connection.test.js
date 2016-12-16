@@ -3,7 +3,7 @@ import sinon from 'sinon';
 import SockJS from 'sockjs-client';
 import { FakeSockJS } from './fake-sockjs';
 import _ from 'lodash';
-import EJSON from 'ejson';
+// import EJSON from 'ejson';
 import { Connection } from '../src/connection';
 const SERVER_URL = 'http://localhost:3000/sockjs';
 
@@ -36,7 +36,7 @@ test('Not create Connection with invalid options', (t) => {
 		incorrectOption: 'blah'
 	};
 	try {
-		let connection = new Connection(SERVER_URL, options);
+		new Connection(SERVER_URL, options);
 		t.fail('Connection created with invalid options');
 		t.false(spy.called, 'SockJS not created');
 	} catch (e) {
@@ -58,14 +58,16 @@ test('Create Connection and then connect', (t) => {
 		event => {
 			if (event.type === 'connected') {
 				t.pass('Creating connection and connect');
+				connection.close();
 			} else if (event.type === 'closed') {
 				t.pass('Connection correct closed');
+				connection.close();
 			} else {
 				t.fail(`Unexpected state on connection ${event.state}`);
+				connection.close();
 			}
-			connection.close();
 		},
-		error => t.fail('Failed creating connection')
+		() => t.fail('Failed creating connection')
 	);
 });
 
@@ -76,24 +78,23 @@ test('Call method', (t) => {
 	let options = {
 		autoConnect: true
 	};
-	let connection = new Connection(SERVER_URL, options);
+	let connection = new Connection(SERVER_URL, options, FakeSockJS);
 
 	connection.subscribe(
 		event => {
 			if (event.type === 'connected') {
 				t.pass('Creating connection and connect');
 				connection
-					.call("getpessoas")
+					.call('getpessoas', { '_id': 'RPQuuo2YjAKtTEvfT' })
 					.subscribe(
-						result => {
-							console.log(result);
-							t.pass('Method called with success');
-							connection.close();
-						},
-						error => {
-							t.fail('Error calling method');
-							connection.close();
-						});
+					result => {
+						t.pass('Method called with success');
+						connection.close();
+					},
+					error => {
+						t.fail('Error calling method');
+						connection.close();
+					});
 			} else if (event.type === 'closed') {
 				t.pass('Connection correct closed');
 			} else {

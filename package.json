@@ -44,6 +44,7 @@
     "babel-runtime": "^6.20.0",
     "ejson": "^2.1.2",
     "lodash": "^4.17.2",
+    "moment": "^2.17.1",
     "rx": "^4.1.0",
     "sinon": "^1.17.6",
     "sockjs-client": "^1.1.1",
@@ -51,10 +52,10 @@
   },
   "babel": {
     "presets": [
-		"es2015",
-		"stage-1"
-	  ],
-	  "plugins": [
+      "es2015",
+      "stage-1"
+    ],
+    "plugins": [
       "transform-decorators-legacy",
       "transform-class-properties",
       "transform-runtime"
