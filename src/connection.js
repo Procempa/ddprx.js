@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import Ajv from 'ajv';
-import Rx from 'rx';
+import Rx from 'rxjs/Rx';
 import validate from 'validate.js';
 import SockJS from 'sockjs-client';
 import { generateId, stringifyDDP, parseDDP } from './util';
@@ -100,21 +100,21 @@ export class Connection {
 				case 'close':
 					this.connected = false;
 					if (this.autoReconect) {
-						this.stateSubject.onNext({ 'type': 'reconnecting' });
+						this.stateSubject.next({ 'type': 'reconnecting' });
 						_.delay(() => this._socket = new this.Socket(this.server_url, undefined, {
 							transports: Connection.TRANSPORTS
 						}), this.reconnectInterval || 5000);
 
 					} else {
 						if (event.code === 1002) {
-							this.stateSubject.onNext({
+							this.stateSubject.next({
 								'type': 'error',
 								'reason': event.reason
 							});
 						} else {
-							this.stateSubject.onNext({ 'type': 'closed' });
-							this.stateSubject.onCompleted();
-							this.schedulerDispose.dispose();
+							this.stateSubject.next({ 'type': 'closed' });
+							this.stateSubject.complete();
+							this.schedulerSubscribe.unsubscribe();
 						}
 					}
 					break;
@@ -133,11 +133,10 @@ export class Connection {
 			transports: Connection.TRANSPORTS
 		});
 
-		this.schedulerDispose = Rx.Scheduler.default.scheduleRecursiveFuture(
-			undefined,
-			DEFAULT_DELAY,
-			(...args) => {
-				let recurse = args[1];
+		this.schedulerSubscribe = Rx.Observable
+			.interval(DEFAULT_DELAY)
+			.observeOn(Rx.Scheduler.async)
+			.subscribe(() => {
 				if (this._socket.readyState === Connection.STATE_OPEN) {
 					let message = this.remoteCollection.shift();
 					if (message) {
@@ -149,7 +148,6 @@ export class Connection {
 						}
 					}
 				}
-				recurse();
 			});
 	}
 
@@ -160,7 +158,7 @@ export class Connection {
 			case 'connected':
 				this.connected = true;
 				this.session_id = msg.session;
-				this.stateSubject.onNext({ 'type': 'connected' });
+				this.stateSubject.next({ 'type': 'connected' });
 				break;
 			case 'ping':
 				this.send({ msg: 'pong', id: msg.id });
@@ -170,12 +168,12 @@ export class Connection {
 				if (observer) {
 					_.unset(this, `pending-calls.${msg.id}`);
 					if (msg.result) {
-						observer.onNext(msg.result);
+						observer.next(msg.result);
 					} else {
 						observer.onError(msg.error);
 					}
-					observer.onCompleted();
-					observer.dispose();
+					observer.complete();
+					observer.unsubscribe();
 				}
 				break;
 			case 'added':
@@ -183,7 +181,7 @@ export class Connection {
 			case 'removed':
 				observer = _.get(this, `collection-${msg.collection}`);
 				if (observer) {
-					observer.onNext({
+					observer.next({
 						type: msg.msg,
 						data: _.assignIn({ _id: msg.id }, msg.fields)
 					});
