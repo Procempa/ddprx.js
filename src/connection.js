@@ -23,8 +23,6 @@ const URL_VALIDATION = {
 	}
 };
 
-const DEFAULT_DELAY = 100;
-
 export class Connection {
 
 	static TRANSPORTS = [
@@ -41,7 +39,8 @@ export class Connection {
 
 	static STATE_CLOSED = 0;
 	static STATE_OPEN = 1;
-
+	static STATE_RECONNECTING = 3;
+	static DEFAULT_DELAY = 100;
 
 	connected = false;
 
@@ -93,29 +92,38 @@ export class Connection {
 			}
 		}
 		this.close();
-		this.stateSubject = new Rx.ReplaySubject(1);
+		this.state = new Rx.BehaviorSubject();
+		this.schedulerSubscribe = Rx.Observable
+			.interval(Connection.DEFAULT_DELAY)
+			.observeOn(Rx.Scheduler.async)
+			.subscribe(() => {
+				if (this._socket.readyState === Connection.STATE_OPEN) {
+					let message = this.remoteCollection.shift();
+					if (message) {
+						try {
+							this._socket.send(stringifyDDP(message));
+						} catch (error) {
+							console.error(error);
+							this.remoteCollection.unshift(message);
+						}
+					}
+				}
+			});
 		this.Socket.prototype.dispatchEvent = (event) => {
 			// console.log(event);
 			switch (event.type) {
 				case 'close':
 					this.connected = false;
 					if (this.autoReconect) {
-						this.stateSubject.next({ 'type': 'reconnecting' });
+						this.state.next(Connection.STATE_RECONNECTING);
 						_.delay(() => this._socket = new this.Socket(this.server_url, undefined, {
 							transports: Connection.TRANSPORTS
 						}), this.reconnectInterval || 5000);
 
 					} else {
-						if (event.code === 1002) {
-							this.stateSubject.next({
-								'type': 'error',
-								'reason': event.reason
-							});
-						} else {
-							this.stateSubject.next({ 'type': 'closed' });
-							this.stateSubject.complete();
-							this.schedulerSubscribe.unsubscribe();
-						}
+						this.state.next(Connection.STATE_CLOSED);
+						this.state.complete();
+						this.schedulerSubscribe.unsubscribe();
 					}
 					break;
 				case 'open':
@@ -133,22 +141,6 @@ export class Connection {
 			transports: Connection.TRANSPORTS
 		});
 
-		this.schedulerSubscribe = Rx.Observable
-			.interval(DEFAULT_DELAY)
-			.observeOn(Rx.Scheduler.async)
-			.subscribe(() => {
-				if (this._socket.readyState === Connection.STATE_OPEN) {
-					let message = this.remoteCollection.shift();
-					if (message) {
-						try {
-							this._socket.send(stringifyDDP(message));
-						} catch (error) {
-							console.error(error);
-							this.remoteCollection.unshift(message);
-						}
-					}
-				}
-			});
 	}
 
 	_processMessage(msg) {
@@ -158,7 +150,7 @@ export class Connection {
 			case 'connected':
 				this.connected = true;
 				this.session_id = msg.session;
-				this.stateSubject.next({ 'type': 'connected' });
+				this.state.next(Connection.STATE_OPEN);
 				break;
 			case 'ping':
 				this.send({ msg: 'pong', id: msg.id });
@@ -207,10 +199,6 @@ export class Connection {
 		}
 	}
 
-	subscribe( /* arguments */) {
-		return this.stateSubject.subscribe(...arguments);
-	}
-
 	unsubscribe(publishName) {
 		let subscribe = _.get(this, `subscribe-${publishName}`);
 		if (subscribe) {
@@ -222,7 +210,7 @@ export class Connection {
 		}
 	}
 
-	collection(collectionName, publishName, ...params) {
+	subscribe(collectionName, publishName, ...params) {
 		let publishId = _.get(this, `subscribe-${publishName}`);
 		let collectionSubject = _.get(this, `collection-${collectionName}`);
 

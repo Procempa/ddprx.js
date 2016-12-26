@@ -54,16 +54,13 @@ test('Create Connection and then connect', (t) => {
 	};
 	let connection = new Connection(SERVER_URL, options, FakeSockJS);
 
-	connection.subscribe(
-		event => {
-			if (event.type === 'connected') {
+	connection.state.subscribe(
+		state => {
+			if (state === Connection.STATE_OPEN) {
 				t.pass('Creating connection and connect');
 				connection.close();
-			} else if (event.type === 'closed') {
+			} else if (state === Connection.STATE_CLOSED) {
 				t.pass('Connection correct closed');
-				connection.close();
-			} else {
-				t.fail(`Unexpected state on connection ${event.state}`);
 				connection.close();
 			}
 		},
@@ -80,9 +77,9 @@ test('Call method', (t) => {
 	};
 	let connection = new Connection(SERVER_URL, options, FakeSockJS);
 
-	connection.subscribe(
-		event => {
-			if (event.type === 'connected') {
+	connection.state.subscribe(
+		state => {
+			if (state === Connection.STATE_OPEN) {
 				t.pass('Creating connection and connect');
 				connection
 					.call('methodName', { 'param': 'RPQuuo2YjAKtTEvfT' })
@@ -95,12 +92,9 @@ test('Call method', (t) => {
 						t.fail('Error calling method');
 						connection.close();
 					});
-			} else if (event.type === 'closed') {
+			} else if (state === Connection.STATE_CLOSED) {
 				t.pass('Connection correct closed');
-			} else {
-				t.fail(`Unexpected state on connection ${event.state}`);
 			}
-
 		},
 		error => t.fail('Failed creating connection')
 	);
@@ -115,12 +109,12 @@ test('Collection from a publish from server', (t) => {
 	};
 	let connection = new Connection(SERVER_URL, options, FakeSockJS);
 
-	connection.subscribe(
-		event => {
-			if (event.type === 'connected') {
+	connection.state.subscribe(
+		state => {
+			if (state === Connection.STATE_OPEN) {
 				t.pass('Creating connection and connect');
 				connection
-					.collection('collectionName', 'publishName', { '_id': 'RPQuuo2YjAKtTEvfT' })
+					.subscribe('collectionName', 'publishName', { '_id': 'RPQuuo2YjAKtTEvfT' })
 					.subscribe(
 					result => {
 						t.pass('Collection received with success');
@@ -131,12 +125,9 @@ test('Collection from a publish from server', (t) => {
 						t.fail('Error calling method');
 						connection.close();
 					});
-			} else if (event.type === 'closed') {
+			} else if (state === Connection.STATE_CLOSED) {
 				t.pass('Connection correct closed');
-			} else {
-				t.fail(`Unexpected state on connection ${event.type}`);
 			}
-
 		},
 		error => t.fail('Failed creating connection')
 	);
@@ -155,25 +146,22 @@ test('Create Connection and then connect, and reconnect', (t) => {
 	let connection = new Connection(SERVER_URL, options, FakeSockJS);
 	let connectTry = 0;
 	let retry = false;
-	connection.subscribe(
-		event => {
-			if (event.type === 'connected') {
+	connection.state.subscribe(
+		state => {
+			if (state === Connection.STATE_OPEN) {
 				t.pass(`Creating connection and connect ${++connectTry}`);
 				if (connectTry === 1) {
 					connection._socket.close();
 				} else {
 					connection.close();
 				}
-			} else if (event.type === 'reconnecting') {
+			} else if (state === Connection.STATE_RECONNECTING) {
 				if (!retry) {
 					retry = true;
 					t.pass('Trying to reconnect correct');
 				}
-			} else if (event.type === 'closed') {
+			} else if (state === Connection.STATE_CLOSED) {
 				t.pass('Connection correct closed');
-			} else {
-				t.fail(`Unexpected state on connection ${event.type}`);
-				connection.close();
 			}
 		},
 		() => t.fail('Failed creating connection')
