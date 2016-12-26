@@ -50,28 +50,48 @@ test('Cache method calls', t => {
 });
 
 
-// test('Retrive cached items', t => {
-// 	t.plan(5);
-// 	let options = {
-// 		autoConnect: true,
-// 		autoReconect: false,
-// 		reconnectInterval: 10000
-// 	};
+test('Retrive cached items', t => {
+	t.plan(5);
+	let options = {
+		autoConnect: true,
+		autoReconect: false,
+		reconnectInterval: 10000
+	};
 
-// 	let connection = new CachedConnection(SERVER_URL, options, FakeSockJS);
+	let connection = new CachedConnection(SERVER_URL, options, FakeSockJS);
 
-// 	connection.state.subscribe(
-// 		state => {
-// 			if (state === Connection.STATE_OPEN) {
-// 				t.pass('Connection created and connected');
-// 				connection
-// 					.collection('collectionName', 'publishName', { '_id': 'RPQuuo2YjAKtTEvfT' })
-// 					.subscribe(r1 => {
-// 						console.log(r1);
-// 						t.pass('Online collection received success');
-// 						connection.unsubscribe('publishName');
-// 						connection.close();
-// 					});
-// 			}
-// 		});
-// });
+	connection.state.subscribe(
+		state => {
+			if (state === Connection.STATE_OPEN) {
+				t.pass('Connection created and connected');
+				connection
+					.collection('collectionName', 'publishName', { '_id': 'RPQuuo2YjAKtTEvfT' })
+					.subscribe(r1 => {
+						if (r1) {
+							t.pass('Online collection received success');
+							connection.unsubscribe('publishName');
+							connection.close();
+							connection = new CachedConnection(SERVER_URL, options, FakeSockJS);
+							connection.state.subscribe(
+								state => {
+									if (state === Connection.STATE_OPEN) {
+										t.pass('Connection reopened');
+										connection.close();
+									} else if (state === Connection.STATE_CLOSED) {
+										t.pass('New connection closed');
+										connection
+											.collection('collectionName', 'publishName', { '_id': 'RPQuuo2YjAKtTEvfT' })
+											.subscribe(r2 => {
+												if (r2) {
+													t.equal(_.size(r1), _.size(r2), 'Successful retrived offline collection');
+													connection.close();
+												}
+											});
+									}
+								}
+							);
+						}
+					});
+			}
+		});
+});

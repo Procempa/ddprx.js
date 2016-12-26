@@ -139,3 +139,41 @@ test('Store a value, close database, reopen and then retrieve it', (t) => {
 			}
 		});
 });
+
+
+test('Store a value and then remove it', (t) => {
+	t.plan(2);
+
+	let storage = new LocalStorage('test');
+
+	storage.state.subscribe(
+		(state) => {
+			if (state === LocalStorage.STATE_OPEN) {
+				try {
+					storage
+						.setItem('testKey', 'testValue')
+						.subscribe(() => {
+							t.pass('Value setted');
+						},
+						e => {
+							t.fail('Error setting value: ' + e);
+						});
+				} catch (error) {
+					t.fail('Error setting value: ' + error.message);
+				}
+
+				try {
+					storage
+						.removeItem('testKey')
+						.subscribe(() => {
+							t.pass('Value removed');
+							storage.clear();
+							storage.close();
+						});
+				} catch (error) {
+					t.fail('Error retriving value: ' + error.message);
+				}
+			}
+		}
+	);
+});

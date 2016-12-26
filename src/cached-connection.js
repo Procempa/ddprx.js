@@ -1,4 +1,4 @@
-import { Subject, Observable, Scheduler, ReplaySubject } from 'rxjs/Rx';
+import { Subject, Observable, Scheduler, ReplaySubject, BehaviorSubject } from 'rxjs/Rx';
 import { Connection } from './connection';
 import SockJS from 'sockjs-client';
 import { LocalStorage } from './localstorage';
@@ -105,6 +105,41 @@ export class CachedConnection extends Connection {
 				super._processMessage(msg);
 				break;
 		}
+	}
+
+	collection(collectionName, publishName, filter) {
+		let results = {};
+		let subject = new BehaviorSubject();
+		let store = new LocalStorage(collectionName);
+		let oldValue, newValue;
+
+		store.state.subscribe(
+			(state) => {
+				if (state === LocalStorage.STATE_OPEN) {
+					store.subscribe(items => {
+						subject.next(items);
+					});
+				}
+			});
+
+
+		super
+			.subscribe(collectionName, publishName, filter)
+			.subscribe(op => {
+				switch (op.type) {
+					case 'insert':
+					case 'update':
+						oldValue = _.get(results, _.get(op, 'data._id')) || {};
+						newValue = _.assignIn({}, oldValue, op.data);
+						store.setItem(_.get(op, 'data._id'), newValue).subscribe();
+						break;
+					case 'delete':
+						store.removeItem(_.get(op, 'data._id')).subscribe();
+						break;
+				}
+
+			});
+		return subject;
 	}
 
 

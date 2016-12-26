@@ -82,6 +82,31 @@ export class LocalStorage extends BehaviorSubject {
 		});
 	}
 
+	removeItem(key) {
+		return Observable.create((subscriber) => {
+			this.db.subscribe(db => {
+				if (_.isUndefined(db)) return;
+				let transaction = db.transaction([DB_STORE_NAME], 'readwrite');
+				transaction.objectStore(DB_STORE_NAME).delete(key);
+
+				transaction.oncomplete = () => {
+					_.unset(this, `allItems.${key}`);
+					this.next(this.allItems);
+					subscriber.next();
+					subscriber.complete();
+				};
+
+				transaction.onabort = transaction.onerror = function (event) {
+					console.error('Error', event);
+					subscriber.error(event.target.error);
+					subscriber.complete();
+				};
+
+			});
+
+		});
+	}
+
 	item(key) {
 		let subject = new Subject();
 		this.subscribe((items) => {
